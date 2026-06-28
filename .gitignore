@@ -1,0 +1,23 @@
+# Node.js
+**/node_modules/
+**/dist/
+**/dist-ssr/
+*.local
+*.log
+
+# .NET Build
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE / OS / Cache
+.vscode/
+.idea/
+.DS_Store
+.gemini/
+.system_generated/
+*.swp
+*.swo
