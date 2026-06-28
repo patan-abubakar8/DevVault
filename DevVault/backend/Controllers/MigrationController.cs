@@ -14,16 +14,19 @@ namespace DBMigrator.Api.Controllers
     [Route("api/[controller]")]
     public class MigrationController : ControllerBase
     {
-        private readonly ISqlServerMetadataReader _metadataReader;
+        private readonly ISqlServerMetadataReader _sqlServerMetadataReader;
+        private readonly IPostgresMetadataReader _postgresMetadataReader;
         private readonly IMigrationEngine _migrationEngine;
         private readonly IMigrationProgressTracker _progressTracker;
 
         public MigrationController(
-            ISqlServerMetadataReader metadataReader,
+            ISqlServerMetadataReader sqlServerMetadataReader,
+            IPostgresMetadataReader postgresMetadataReader,
             IMigrationEngine migrationEngine,
             IMigrationProgressTracker progressTracker)
         {
-            _metadataReader = metadataReader;
+            _sqlServerMetadataReader = sqlServerMetadataReader;
+            _postgresMetadataReader = postgresMetadataReader;
             _migrationEngine = migrationEngine;
             _progressTracker = progressTracker;
         }
@@ -38,7 +41,16 @@ namespace DBMigrator.Api.Controllers
 
             try
             {
-                var schema = _metadataReader.AnalyzeSchema(request.ConnectionString);
+                SchemaAnalysisResult schema;
+                if (string.Equals(request.Provider, "Postgres", StringComparison.OrdinalIgnoreCase))
+                {
+                    schema = _postgresMetadataReader.AnalyzeSchema(request.ConnectionString);
+                }
+                else
+                {
+                    schema = _sqlServerMetadataReader.AnalyzeSchema(request.ConnectionString);
+                }
+                
                 return Ok(new { success = true, data = schema });
             }
             catch (Exception ex)

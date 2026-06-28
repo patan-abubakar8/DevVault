@@ -22,7 +22,9 @@ builder.Services.AddCors(options =>
 
 // Register dependency injection services
 builder.Services.AddTransient<ISqlServerMetadataReader, SqlServerMetadataReader>();
+builder.Services.AddTransient<IPostgresMetadataReader, PostgresMetadataReader>();
 builder.Services.AddTransient<IPostgresWriter, PostgresWriter>();
+builder.Services.AddTransient<ISqlServerWriter, SqlServerWriter>();
 builder.Services.AddSingleton<IMigrationProgressTracker, MigrationProgressTracker>();
 builder.Services.AddSingleton<IMigrationEngine, MigrationEngine>();
 

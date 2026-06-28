@@ -19,6 +19,7 @@ function App() {
   const [step, setStep] = useState<Step>('credentials');
   const [sourceConn, setSourceConn] = useState('');
   const [targetConn, setTargetConn] = useState('');
+  const [migrationDirection, setMigrationDirection] = useState('SqlServerToPostgres'); // SqlServerToPostgres or PostgresToSqlServer
   const [finalProgress, setFinalProgress] = useState<MigrationProgress | null>(null);
 
   const [theme, setTheme] = useState<Theme>(() => {
@@ -37,9 +38,10 @@ function App() {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
-  const handleCredentialsSuccess = (source: string, target: string) => {
+  const handleCredentialsSuccess = (source: string, target: string, direction: string) => {
     setSourceConn(source);
     setTargetConn(target);
+    setMigrationDirection(direction);
     setStep('analysis');
   };
 
@@ -53,6 +55,7 @@ function App() {
           targetConnectionString: targetConn,
           selectedTables,
           cleanTarget,
+          direction: migrationDirection
         }),
       });
       const data = await response.json();
@@ -291,6 +294,7 @@ function App() {
               {step === 'analysis' && (
                 <StepAnalysis
                   sourceConn={sourceConn}
+                  direction={migrationDirection}
                   onBack={() => setStep('credentials')}
                   onStartMigration={handleStartMigration}
                 />

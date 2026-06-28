@@ -17,8 +17,10 @@ namespace DBMigrator.Api.Services
 
     public class MigrationEngine : IMigrationEngine
     {
-        private readonly ISqlServerMetadataReader _metadataReader;
+        private readonly ISqlServerMetadataReader _sqlServerMetadataReader;
+        private readonly IPostgresMetadataReader _postgresMetadataReader;
         private readonly IPostgresWriter _postgresWriter;
+        private readonly ISqlServerWriter _sqlServerWriter;
         private readonly IMigrationProgressTracker _progressTracker;
         
         private CancellationTokenSource? _cts;
@@ -28,12 +30,16 @@ namespace DBMigrator.Api.Services
         public bool IsRunning => _isRunning;
 
         public MigrationEngine(
-            ISqlServerMetadataReader metadataReader,
+            ISqlServerMetadataReader sqlServerMetadataReader,
+            IPostgresMetadataReader postgresMetadataReader,
             IPostgresWriter postgresWriter,
+            ISqlServerWriter sqlServerWriter,
             IMigrationProgressTracker progressTracker)
         {
-            _metadataReader = metadataReader;
+            _sqlServerMetadataReader = sqlServerMetadataReader;
+            _postgresMetadataReader = postgresMetadataReader;
             _postgresWriter = postgresWriter;
+            _sqlServerWriter = sqlServerWriter;
             _progressTracker = progressTracker;
         }
 
@@ -69,23 +75,41 @@ namespace DBMigrator.Api.Services
 
         private async Task RunMigrationInternalAsync(MigrationRequest request, CancellationToken cancellationToken)
         {
+            bool isPgToSql = string.Equals(request.Direction, "PostgresToSqlServer", StringComparison.OrdinalIgnoreCase);
+
             try
             {
                 _progressTracker.Reset();
-                _progressTracker.AddLog("Starting SQL Server to PostgreSQL Migration pipeline...", "INFO");
+                
+                if (isPgToSql)
+                {
+                    _progressTracker.AddLog("Starting PostgreSQL to SQL Server Migration pipeline...", "INFO");
+                }
+                else
+                {
+                    _progressTracker.AddLog("Starting SQL Server to PostgreSQL Migration pipeline...", "INFO");
+                }
 
                 // 1. Analyze schema of source tables
                 _progressTracker.SetPhase("Analyzing");
-                _progressTracker.AddLog("Reading metadata from SQL Server source database...", "INFO");
+                _progressTracker.AddLog("Reading metadata from source database...", "INFO");
 
                 SchemaAnalysisResult sourceSchema;
                 try
                 {
-                    sourceSchema = _metadataReader.AnalyzeSchema(request.SourceConnectionString);
+                    if (isPgToSql)
+                    {
+                        sourceSchema = _postgresMetadataReader.AnalyzeSchema(request.SourceConnectionString);
+                    }
+                    else
+                    {
+                        sourceSchema = _sqlServerMetadataReader.AnalyzeSchema(request.SourceConnectionString);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    throw new Exception($"Failed to connect or analyze SQL Server database: {ex.Message}");
+                    string dbName = isPgToSql ? "PostgreSQL" : "SQL Server";
+                    throw new Exception($"Failed to connect or analyze {dbName} source database: {ex.Message}");
                 }
 
                 // Filter source tables based on selection
@@ -103,26 +127,53 @@ namespace DBMigrator.Api.Services
 
                 // 2. Schema Creation Phase
                 _progressTracker.SetPhase("SchemaCreation");
-                _progressTracker.AddLog("Generating DDL and building table structures in target PostgreSQL database...", "INFO");
-
-                try
+                
+                if (isPgToSql)
                 {
-                    await _postgresWriter.PrepareTargetSchemaAsync(
-                        request.TargetConnectionString, 
-                        selectedTables, 
-                        request.CleanTarget, 
-                        (msg, lvl) => _progressTracker.AddLog(msg, lvl));
+                    _progressTracker.AddLog("Generating DDL and building table structures in target SQL Server database...", "INFO");
+                    try
+                    {
+                        await _sqlServerWriter.PrepareTargetSchemaAsync(
+                            request.TargetConnectionString, 
+                            selectedTables, 
+                            request.CleanTarget, 
+                            (msg, lvl) => _progressTracker.AddLog(msg, lvl));
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to prepare SQL Server target schema: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    throw new Exception($"Failed to prepare PostgreSQL target schema: {ex.Message}");
+                    _progressTracker.AddLog("Generating DDL and building table structures in target PostgreSQL database...", "INFO");
+                    try
+                    {
+                        await _postgresWriter.PrepareTargetSchemaAsync(
+                            request.TargetConnectionString, 
+                            selectedTables, 
+                            request.CleanTarget, 
+                            (msg, lvl) => _progressTracker.AddLog(msg, lvl));
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to prepare PostgreSQL target schema: {ex.Message}");
+                    }
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // 3. Data Transfer Phase (Sequential table migration to prevent connection starvation and ensure ordered log streaming)
+                // 3. Data Transfer Phase (Sequential table migration)
                 _progressTracker.SetPhase("DataCopy");
-                _progressTracker.AddLog("Beginning bulk binary COPY operations for table data...", "INFO");
+                
+                if (isPgToSql)
+                {
+                    _progressTracker.AddLog("Beginning bulk SqlBulkCopy operations for table data...", "INFO");
+                }
+                else
+                {
+                    _progressTracker.AddLog("Beginning bulk binary COPY operations for table data...", "INFO");
+                }
 
                 for (int i = 0; i < selectedTables.Count; i++)
                 {
@@ -137,19 +188,38 @@ namespace DBMigrator.Api.Services
 
                     try
                     {
-                        await _postgresWriter.MigrateTableDataAsync(
-                            request.SourceConnectionString,
-                            request.TargetConnectionString,
-                            table,
-                            (rowsCopied) =>
-                            {
-                                var elapsedSec = stopwatch.Elapsed.TotalSeconds;
-                                double speed = elapsedSec > 0.05 ? rowsCopied / elapsedSec : 0;
-                                _progressTracker.UpdateTableProgress(tableFullName, rowsCopied, "Copying", speed);
-                            },
-                            (msg, lvl) => _progressTracker.AddLog(msg, lvl),
-                            cancellationToken
-                        );
+                        if (isPgToSql)
+                        {
+                            await _sqlServerWriter.MigrateTableDataAsync(
+                                request.SourceConnectionString,
+                                request.TargetConnectionString,
+                                table,
+                                (rowsCopied) =>
+                                {
+                                    var elapsedSec = stopwatch.Elapsed.TotalSeconds;
+                                    double speed = elapsedSec > 0.05 ? rowsCopied / elapsedSec : 0;
+                                    _progressTracker.UpdateTableProgress(tableFullName, rowsCopied, "Copying", speed);
+                                },
+                                (msg, lvl) => _progressTracker.AddLog(msg, lvl),
+                                cancellationToken
+                            );
+                        }
+                        else
+                        {
+                            await _postgresWriter.MigrateTableDataAsync(
+                                request.SourceConnectionString,
+                                request.TargetConnectionString,
+                                table,
+                                (rowsCopied) =>
+                                {
+                                    var elapsedSec = stopwatch.Elapsed.TotalSeconds;
+                                    double speed = elapsedSec > 0.05 ? rowsCopied / elapsedSec : 0;
+                                    _progressTracker.UpdateTableProgress(tableFullName, rowsCopied, "Copying", speed);
+                                },
+                                (msg, lvl) => _progressTracker.AddLog(msg, lvl),
+                                cancellationToken
+                            );
+                        }
 
                         stopwatch.Stop();
                         _progressTracker.UpdateTableProgress(tableFullName, table.RowCount, "Completed", 0);
@@ -172,19 +242,37 @@ namespace DBMigrator.Api.Services
 
                 // 4. Constraints and Index Application Phase
                 _progressTracker.SetPhase("Constraints");
-                _progressTracker.AddLog("Rebuilding indexes, primary keys, foreign keys, and syncing sequence counters...", "INFO");
+                _progressTracker.AddLog("Rebuilding indexes, primary keys, and foreign keys...", "INFO");
 
-                try
+                if (isPgToSql)
                 {
-                    await _postgresWriter.ApplyPostDataConstraintsAsync(
-                        request.TargetConnectionString,
-                        selectedTables,
-                        (msg, lvl) => _progressTracker.AddLog(msg, lvl)
-                    );
+                    try
+                    {
+                        await _sqlServerWriter.ApplyPostDataConstraintsAsync(
+                            request.TargetConnectionString,
+                            selectedTables,
+                            (msg, lvl) => _progressTracker.AddLog(msg, lvl)
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to apply SQL Server post-data constraints: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    throw new Exception($"Failed to apply post-data constraints: {ex.Message}");
+                    try
+                    {
+                        await _postgresWriter.ApplyPostDataConstraintsAsync(
+                            request.TargetConnectionString,
+                            selectedTables,
+                            (msg, lvl) => _progressTracker.AddLog(msg, lvl)
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to apply PostgreSQL post-data constraints: {ex.Message}");
+                    }
                 }
 
                 // Complete

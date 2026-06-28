@@ -6,6 +6,7 @@ namespace DBMigrator.Api.Models
     public class ConnectionRequest
     {
         public string ConnectionString { get; set; } = string.Empty;
+        public string Provider { get; set; } = "SqlServer"; // SqlServer or Postgres
     }
 
     public class MigrationRequest
@@ -14,6 +15,7 @@ namespace DBMigrator.Api.Models
         public string TargetConnectionString { get; set; } = string.Empty;
         public List<string> SelectedTables { get; set; } = new();
         public bool CleanTarget { get; set; } = false;
+        public string Direction { get; set; } = "SqlServerToPostgres"; // SqlServerToPostgres or PostgresToSqlServer
     }
 
     public class ColumnMetadata

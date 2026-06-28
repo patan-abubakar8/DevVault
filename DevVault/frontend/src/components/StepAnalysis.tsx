@@ -8,12 +8,14 @@ import {
 
 interface StepAnalysisProps {
   sourceConn: string;
+  direction: string;
   onBack: () => void;
   onStartMigration: (selectedTables: string[], cleanTarget: boolean) => void;
 }
 
 export const StepAnalysis: React.FC<StepAnalysisProps> = ({ 
   sourceConn, 
+  direction,
   onBack, 
   onStartMigration 
 }) => {
@@ -34,7 +36,10 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
         const response = await fetch('http://localhost:5252/api/migration/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ connectionString: sourceConn }),
+          body: JSON.stringify({ 
+            connectionString: sourceConn,
+            provider: direction === 'PostgresToSqlServer' ? 'Postgres' : 'SqlServer'
+          }),
         });
         const data = await response.json();
 
@@ -288,8 +293,8 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
                           <thead>
                             <tr>
                               <th>Column</th>
-                              <th>Source (SQL Server)</th>
-                              <th>Target (PostgreSQL)</th>
+                              <th>{direction === 'PostgresToSqlServer' ? 'Source (PostgreSQL)' : 'Source (SQL Server)'}</th>
+                              <th>{direction === 'PostgresToSqlServer' ? 'Target (SQL Server)' : 'Target (PostgreSQL)'}</th>
                               <th>Nullability</th>
                               <th>Key Info</th>
                             </tr>
