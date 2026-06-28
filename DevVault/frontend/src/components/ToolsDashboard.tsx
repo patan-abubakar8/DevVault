@@ -4,6 +4,7 @@ import { Database, ArrowRight, ShieldAlert, Braces, Binary, FileCode, Search } f
 interface ToolsDashboardProps {
   onSelectSqlServerToPostgres: () => void;
   onSelectPmsTestTool: () => void;
+  onSelectRegexTester: () => void;
 }
 
 type UtilityCategory = 'all' | 'database' | 'testing' | 'frontend' | 'backend';
@@ -11,6 +12,7 @@ type UtilityCategory = 'all' | 'database' | 'testing' | 'frontend' | 'backend';
 export const ToolsDashboard: React.FC<ToolsDashboardProps> = ({
   onSelectSqlServerToPostgres,
   onSelectPmsTestTool,
+  onSelectRegexTester,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<UtilityCategory>('all');
@@ -59,8 +61,9 @@ export const ToolsDashboard: React.FC<ToolsDashboardProps> = ({
       name: 'Regex Tester & Builder',
       desc: 'Write, test, and debug regular expressions with real-time match highlighting, group captures, and detailed regex expression breakdowns.',
       icon: <FileCode size={22} />,
-      enabled: false,
-      badge: 'Coming Soon',
+      enabled: true,
+      action: onSelectRegexTester,
+      badge: 'Active',
       categories: ['testing', 'frontend']
     },
     {

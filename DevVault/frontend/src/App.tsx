@@ -8,10 +8,11 @@ import { StepSummary } from './components/StepSummary';
 import type { MigrationProgress } from './types';
 import { Check, Sun, Moon, Code2, Home, Database, ShieldCheck, Menu, Search, UserPlus } from 'lucide-react';
 import { PmsTestTool } from './components/PmsTestTool/PmsTestTool';
+import { RegexTester } from './components/RegexTester/RegexTester';
 
 type Step = 'credentials' | 'analysis' | 'progress' | 'summary';
 type Theme = 'dark' | 'light';
-type View = 'dashboard' | 'migrator' | 'test-tool';
+type View = 'dashboard' | 'migrator' | 'test-tool' | 'regex-tester';
 
 function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -157,6 +158,14 @@ function App() {
               <ShieldCheck size={16} style={{ color: '#10b981' }} />
               <span>Unit Test Gen</span>
             </button>
+
+            <button 
+              className={`sidebar-item ${view === 'regex-tester' ? 'active' : ''}`}
+              onClick={() => { setView('regex-tester'); }}
+            >
+              <Code2 size={16} style={{ color: '#a78bfa' }} />
+              <span>Regex Tester</span>
+            </button>
           </div>
 
           <div className="sidebar-section">
@@ -267,9 +276,12 @@ function App() {
             <ToolsDashboard 
               onSelectSqlServerToPostgres={() => setView('migrator')} 
               onSelectPmsTestTool={() => setView('test-tool')}
+              onSelectRegexTester={() => setView('regex-tester')}
             />
           ) : view === 'test-tool' ? (
             <PmsTestTool />
+          ) : view === 'regex-tester' ? (
+            <RegexTester />
           ) : (
             <>
               {step === 'credentials' && (
